@@ -8,6 +8,7 @@
 VkInstance instance;
 VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 VkDevice logicalDevice = VK_NULL_HANDLE;
+VkQueue graphicsQueue;
 
 int checkValidationLayerAvailabillity(char** requiredValidationLayers, char validationLayerCount)
 {
@@ -213,6 +214,7 @@ int createLogicalDevice()
     }
 
     printf("Logical device creation OK!\n");
+    vkGetDeviceQueue(logicalDevice, indecies.graphicsFamily, 0, &graphicsQueue);
     return 1;
 }
 
