@@ -257,7 +257,7 @@ int initWindow(GLFWwindow** window)
 
 int cleanupWindow(GLFWwindow** window)
 {
-
+    vkDestroyDevice(logicalDevice, NULL);
     vkDestroyInstance(instance, NULL);
     glfwDestroyWindow(*window);
 
