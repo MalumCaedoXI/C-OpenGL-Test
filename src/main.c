@@ -7,7 +7,7 @@
 int main() {
     GLFWwindow** window; 
     initWindow(window);
-    initVulkan();
+    initVulkan(*window);
 
     while (!glfwWindowShouldClose(*window)) {
         glfwPollEvents();
