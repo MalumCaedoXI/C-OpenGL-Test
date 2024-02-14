@@ -14,6 +14,9 @@ VkSurfaceKHR windowSurface;
 VkSwapchainKHR swapChain;
 uint32_t swapChainImageCount;
 VkImage* swapChainImages;
+VkFormat swapChainImageFormat;
+VkExtent2D swapChainExtent;
+VkImageView* swapChainImageViews;
 
 QueueFamilyIndices findQueueFamilies(VkPhysicalDevice targetDevice)
 {
@@ -442,9 +445,41 @@ int createSwapChain(GLFWwindow* window)
     vkGetSwapchainImagesKHR(logicalDevice, swapChain, &swapChainImageCount, NULL);
     swapChainImages = malloc(sizeof(VkImage) * swapChainImageCount);//TODO: This should probably never need to be freed, but still feels like a good idea to do so. Figure out how to conditionally free this if the code has reached here in cleanup.
     vkGetSwapchainImagesKHR(logicalDevice, swapChain, &swapChainImageCount, swapChainImages);
+    swapChainImageFormat = surfaceFormat.format;
+    swapChainExtent = extent;
     return 1;
 }
 
+int createSwapChainImageViews()
+{
+    printf("Starting creation of Swap Chain Image Views!\n");
+    swapChainImageViews = malloc(sizeof(VkImageView) * swapChainImageCount);
+    for (int i = 0; i < swapChainImageCount; i++)
+    {
+        VkImageViewCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        createInfo.image = swapChainImages[i];
+        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        createInfo.format = swapChainImageFormat;
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        createInfo.subresourceRange.baseMipLevel = 0;
+        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.baseArrayLayer = 0;
+        createInfo.subresourceRange.layerCount = 1;
+        if (vkCreateImageView(logicalDevice, &createInfo, NULL, &swapChainImageViews[i]) != VK_SUCCESS)
+        {
+            printf("Swap Chain Image View Creation failed on loop: %i\n", i);
+            return 0;
+        }
+    }
+
+    printf("Swap Chain Image View Creation OK!\n");
+    return 1;
+}
 
 int initVulkan(GLFWwindow* window)
 {
@@ -481,6 +516,10 @@ int initVulkan(GLFWwindow* window)
     {
         return 0;
     }
+    if (!(createSwapChainImageViews()))
+    {
+        return 0;
+    }
 
     
 
@@ -498,6 +537,12 @@ int initWindow(GLFWwindow** window)
 
 int cleanupWindow(GLFWwindow** window)
 {
+
+    for (int i = 0; i < swapChainImageCount; i++)
+    {
+        vkDestroyImageView(logicalDevice, swapChainImageViews[i], NULL);
+    }
+
     vkDestroySwapchainKHR(logicalDevice, swapChain, NULL);
     vkDestroyDevice(logicalDevice, NULL);
     vkDestroyInstance(instance, NULL);
