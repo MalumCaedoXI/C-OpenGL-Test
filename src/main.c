@@ -11,8 +11,9 @@ int main() {
 
     while (!glfwWindowShouldClose(*window)) {
         glfwPollEvents();
+        drawFrame();
     }
 
-    
+    waitIdle();
     cleanupWindow(window);
 }

@@ -5,6 +5,11 @@
 #include <GLFW/glfw3native.h>
 #include <limits.h>
 
+typedef struct ShaderBytecode{
+    size_t fileSize;
+    char* buffer;
+} ShaderBytecode;
+
 typedef struct QueueFamilyIndices {
     char valid;
     uint32_t graphicsFamily; 
@@ -22,3 +27,5 @@ typedef struct SwapChainDetails {
 int initVulkan();
 int initWindow(GLFWwindow** window);
 int cleanupWindow(GLFWwindow** window);
+int drawFrame();
+void waitIdle();
