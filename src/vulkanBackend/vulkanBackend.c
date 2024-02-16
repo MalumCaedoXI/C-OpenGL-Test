@@ -138,7 +138,8 @@ int checkExtensionAvailabillity(VkPhysicalDevice targetDevice)
 {
     printf("Starting check for available device extentions!\n");
     uint32_t requiredExtentionCount = 1;
-    char* requiredExtentions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    char* requiredExtentions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME, 
+    VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME};
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(targetDevice, NULL, &extensionCount, NULL);
     VkExtensionProperties extensions[extensionCount];
@@ -362,8 +363,9 @@ int createLogicalDevice()
     createInfo.pEnabledFeatures = &deviceFeatures;
     createInfo.enabledLayerCount = 0;
 
-    createInfo.enabledExtensionCount = 1;
-    const char const* requiredExtentions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    createInfo.enabledExtensionCount = 3;
+    const char const* requiredExtentions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
+    VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME};
     createInfo.ppEnabledExtensionNames = requiredExtentions;
 
     char validationLayerCount = 1;
