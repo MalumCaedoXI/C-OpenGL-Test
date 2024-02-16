@@ -881,9 +881,16 @@ int recreateSwapChain()
 
     cleanupSwapChain();
 
-    if (!(createSwapChain() && createSwapChainImageViews()))
+    if (!(createSwapChain()))
     {
+        printf("SwapChain Recreation Failed!\n");
+
         return 0;
+    }
+
+    if (!createSwapChainImageViews())
+    {
+        printf("SwapChain Recreation OK!\n");
     }
 
     return 1;
@@ -967,9 +974,10 @@ int drawFrame()
     {
         printf("Resizing2?\n");
         recreateSwapChain();
+        printf("Resizing Done!\n");
         return 1;
     }
-    else if (!(result == VK_SUCCESS ))
+    else if (result != VK_SUCCESS )
     {
         printf("Failed to grab swapchain!");
         return 0;
