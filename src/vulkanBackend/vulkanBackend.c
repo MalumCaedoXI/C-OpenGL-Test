@@ -5,6 +5,9 @@
 #define windowWidth 800
 #define windowHeight 600
 
+
+GLFWwindow* screenWindow;
+char screenResized = 0;
 VkInstance instance;
 VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 VkDevice logicalDevice = VK_NULL_HANDLE;
@@ -403,19 +406,15 @@ int createLogicalDevice()
     return 1;
 }
 
-int createSurface(GLFWwindow* window)
-{
-    
-}
 
-int createSwapChain(GLFWwindow* window)
+int createSwapChain()
 {
     printf("Starting to create Swapchain!\n");
     SwapChainDetails details = findSwapChainDetails(physicalDevice);
 
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(details.formats, details.formatSize);
     VkPresentModeKHR presentMode = chooseSwapPresentMode(details.presentModes, details.presentSize);
-    VkExtent2D extent = chooseSwapExtent(details.capabilities, window);
+    VkExtent2D extent = chooseSwapExtent(details.capabilities, screenWindow);
 
     uint32_t imageCount = details.capabilities.minImageCount + 1;
 
@@ -751,6 +750,7 @@ int createSyncObjects()
 
 int initVulkan(GLFWwindow* window)
 {
+    
     if (!createInstance())
     {
         return 0;
@@ -783,7 +783,7 @@ int initVulkan(GLFWwindow* window)
     {
         return 0;   
     }
-    if (!createSwapChain(window))
+    if (!createSwapChain())
     {
         return 0;
     }
@@ -812,17 +812,36 @@ int initVulkan(GLFWwindow* window)
     return 1;
 }
 
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+    printf("Resizing?\n");
+    screenResized = 0;
+}
+
 int initWindow(GLFWwindow** window)
 {
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     *window = glfwCreateWindow(windowWidth, windowHeight, "Vulkan", NULL, NULL);
+    screenWindow = *window;
+    glfwSetFramebufferSizeCallback(*window, framebufferResizeCallback);
+}
+
+void cleanupSwapChain()
+{
+    for (uint32_t i = 0; i < swapChainImageCount; i++)
+    {
+        vkDestroyImageView(logicalDevice, swapChainImageViews[i], NULL);
+    }
+
+    vkDestroySwapchainKHR(logicalDevice, swapChain, NULL);
 }
 
 int cleanupWindow(GLFWwindow** window)
 {
+
+    cleanupSwapChain();
+
     vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, NULL);
     vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, NULL);
     vkDestroyFence(logicalDevice, inFlightFence, NULL);
@@ -836,11 +855,6 @@ int cleanupWindow(GLFWwindow** window)
     vkDestroyShaderModule(logicalDevice, fragmentShader, NULL);
 
 
-    for (int i = 0; i < swapChainImageCount; i++)
-    {
-        vkDestroyFramebuffer(logicalDevice, swapChainFrameBuffers[i], NULL);
-        vkDestroyImageView(logicalDevice, swapChainImageViews[i], NULL);
-    }
 
     vkDestroySwapchainKHR(logicalDevice, swapChain, NULL);
     vkDestroyDevice(logicalDevice, NULL);
@@ -848,6 +862,31 @@ int cleanupWindow(GLFWwindow** window)
     glfwDestroyWindow(*window);
 
     glfwTerminate();
+}
+
+
+
+int recreateSwapChain()
+{
+    printf("Recreating SwapChain!\n");
+    screenResized = 0;
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(screenWindow, &width, &height);
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(screenWindow, &width, &height);
+        glfwWaitEvents();
+    }
+
+    vkDeviceWaitIdle(logicalDevice);
+
+    cleanupSwapChain();
+
+    if (!(createSwapChain() && createSwapChainImageViews()))
+    {
+        return 0;
+    }
+
+    return 1;
 }
 
 
@@ -923,7 +962,19 @@ int drawFrame()
     vkResetFences(logicalDevice, 1, &inFlightFence);
 
     uint32_t imageIndex;
-    vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR  || result == VK_SUBOPTIMAL_KHR || screenResized)  
+    {
+        printf("Resizing2?\n");
+        recreateSwapChain();
+        return 1;
+    }
+    else if (!(result == VK_SUCCESS ))
+    {
+        printf("Failed to grab swapchain!");
+        return 0;
+    }
+
     vkResetCommandBuffer(commandBuffer, 0);
     recordCommandBuffer(commandBuffer, imageIndex);
 
@@ -969,5 +1020,7 @@ void waitIdle()
 {
     vkDeviceWaitIdle(logicalDevice);
 }
+
+
 
     
