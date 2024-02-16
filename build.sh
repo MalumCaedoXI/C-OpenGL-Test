@@ -6,3 +6,5 @@ glslc ./resources/shaders/baseFragmentShader.frag -o ./build/baseFragmentShader.
 
 cmake -S . -B ./build
 cmake --build ./build
+
+./test.sh

@@ -19,7 +19,7 @@ VkExtent2D swapChainExtent;
 VkImageView* swapChainImageViews;
 VkShaderModule vertexShader;
 VkShaderModule fragmentShader;
-VkRenderPass renderPass;
+
 VkPipelineLayout pipelineLayout;
 VkPipeline graphicsPipeline;
 VkFramebuffer* swapChainFrameBuffers;
@@ -28,6 +28,8 @@ VkCommandBuffer commandBuffer;
 VkSemaphore imageAvailableSemaphore;
 VkSemaphore renderFinishedSemaphore;
 VkFence inFlightFence;
+PFN_vkCmdBeginRenderingKHR VkStartRender;
+PFN_vkCmdEndRenderingKHR VkEndRender;
 
 QueueFamilyIndices findQueueFamilies(VkPhysicalDevice targetDevice)
 {
@@ -137,7 +139,7 @@ int checkValidationLayerAvailabillity(const char* const* requiredValidationLayer
 int checkExtensionAvailabillity(VkPhysicalDevice targetDevice)
 {
     printf("Starting check for available device extentions!\n");
-    uint32_t requiredExtentionCount = 1;
+    uint32_t requiredExtentionCount = 4;
     char* requiredExtentions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME, 
     VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME};
     uint32_t extensionCount;
@@ -354,6 +356,10 @@ int createLogicalDevice()
     }
     VkPhysicalDeviceFeatures deviceFeatures ={};
 
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderinFeature = {};
+    dynamicRenderinFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+    dynamicRenderinFeature.dynamicRendering  = VK_TRUE;
+
     VkDeviceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
@@ -363,10 +369,12 @@ int createLogicalDevice()
     createInfo.pEnabledFeatures = &deviceFeatures;
     createInfo.enabledLayerCount = 0;
 
-    createInfo.enabledExtensionCount = 3;
+    createInfo.enabledExtensionCount = 4;
     const char const* requiredExtentions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
     VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME};
     createInfo.ppEnabledExtensionNames = requiredExtentions;
+
+    createInfo.pNext = &dynamicRenderinFeature;
 
     char validationLayerCount = 1;
     char validationEnabled = 0;
@@ -380,7 +388,8 @@ int createLogicalDevice()
     {
         createInfo.enabledLayerCount = validationLayerCount;
         createInfo.ppEnabledLayerNames = requiredValidationLayers;
-    }
+    } 
+
 
     if (vkCreateDevice(physicalDevice, &createInfo, NULL, &logicalDevice) != VK_SUCCESS) 
     {
@@ -538,8 +547,8 @@ VkShaderModule createShaderModule(ShaderBytecode bytecode)
 int createGraphicsPipeline()
 {
    printf("Starting creation of Graphics Pipeline! Finally!\n");
-   ShaderBytecode vertShaderBytecode = readShaderFile("baseVertexShader.spv");
-   ShaderBytecode fragShaderBytecode = readShaderFile("baseFragmentShader.spv");
+   ShaderBytecode vertShaderBytecode = readShaderFile("build/baseVertexShader.spv");
+   ShaderBytecode fragShaderBytecode = readShaderFile("build/baseFragmentShader.spv");
 
     vertexShader = createShaderModule(vertShaderBytecode);
     fragmentShader = createShaderModule(fragShaderBytecode);
@@ -639,8 +648,17 @@ int createGraphicsPipeline()
         return 0;
     }
 
+    VkPipelineRenderingCreateInfoKHR pipeline_create = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR};
+    pipeline_create.pNext                   = VK_NULL_HANDLE;
+    pipeline_create.colorAttachmentCount    = 1;
+    pipeline_create.pColorAttachmentFormats = &swapChainImageFormat;
+    pipeline_create.depthAttachmentFormat   = VK_FORMAT_UNDEFINED;//TODO: I got no idea if this is right. Docs are sparse here.
+    pipeline_create.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+    
+
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.renderPass = VK_NULL_HANDLE;
     pipelineInfo.stageCount = 2;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.pVertexInputState = &vertexInputInfo;
@@ -652,7 +670,7 @@ int createGraphicsPipeline()
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.pNext = &pipeline_create;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
@@ -667,88 +685,7 @@ int createGraphicsPipeline()
    return 1;
 }
 
-int createRenderPass()
-{
-    printf("Starting creation of Render Pass!\n");
 
-    VkAttachmentDescription colorAttachment = {};
-    colorAttachment.format = swapChainImageFormat;
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-    VkAttachmentReference colorAttachmentRef = {};
-    colorAttachmentRef.attachment = 0;
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
-
-    VkRenderPassCreateInfo renderPassInfo = {};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-
-    VkSubpassDependency dependency = {};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.srcAccessMask = 0;
-
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
-
-    if (vkCreateRenderPass(logicalDevice, &renderPassInfo, NULL, &renderPass) != VK_SUCCESS) 
-    {
-        printf("Render Pass creation failed!\n");
-        return 0;
-    }
-
-    printf("Render Pass creation OK!\n");
-    return 1;
-}
-
-int createFrameBuffers()
-{
-    printf("Starting FrameBuffer Creation!\n");
-    swapChainFrameBuffers = malloc(sizeof(VkFramebuffer) * swapChainImageCount);
-
-    for (uint32_t i = 0; i < swapChainImageCount; i++) 
-    {
-        VkImageView attachments[] = {swapChainImageViews[i]};
-
-        VkFramebufferCreateInfo framebufferInfo = {};
-        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = renderPass;
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = attachments;
-        framebufferInfo.width = swapChainExtent.width;
-        framebufferInfo.height = swapChainExtent.height;
-        framebufferInfo.layers = 1;
-
-        if (vkCreateFramebuffer(logicalDevice, &framebufferInfo, NULL, &swapChainFrameBuffers[i]) != VK_SUCCESS) 
-        {
-            printf("FrameBuffer Creation failed on iteration: %i!\n", i);
-            return 0;
-        }
-    }
-
-
-    printf("FrameBuffer Creation OK!\n");
-    return 1;
-}
 int createCommandPool()
 {
     printf("Starting Command Pool Creation!\n");
@@ -839,6 +776,9 @@ int initVulkan(GLFWwindow* window)
     {
         return 0;
     }
+
+    VkStartRender = (PFN_vkCmdBeginRenderingKHR) vkGetInstanceProcAddr(instance, "vkCmdBeginRenderingKHR");
+    VkEndRender   = (PFN_vkCmdEndRenderingKHR) vkGetInstanceProcAddr(instance, "vkCmdEndRenderingKHR");
     if (!createLogicalDevice())
     {
         return 0;   
@@ -851,18 +791,11 @@ int initVulkan(GLFWwindow* window)
     {
         return 0;
     }
-    if (!(createRenderPass()))
-    {
-        return 0;
-    }
     if(!(createGraphicsPipeline()))
     {
         return 0;
     }
-    if(!(createFrameBuffers()))
-    {
-        return 0;
-    }
+    
     if(!(createCommandPool()))
     {
         return 0;
@@ -901,7 +834,7 @@ int cleanupWindow(GLFWwindow** window)
 
     vkDestroyShaderModule(logicalDevice, vertexShader, NULL);
     vkDestroyShaderModule(logicalDevice, fragmentShader, NULL);
-    vkDestroyRenderPass(logicalDevice, renderPass, NULL);
+
 
     for (int i = 0; i < swapChainImageCount; i++)
     {
@@ -929,19 +862,32 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
         printf("Start Begin Command Buffer failed!");
         return 0;
     }
+    
+    VkRenderingAttachmentInfoKHR color_attachment_info = {};
+    color_attachment_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    color_attachment_info.imageView = swapChainImageViews[imageIndex]; 
+    color_attachment_info.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    color_attachment_info.resolveMode = VK_RESOLVE_MODE_NONE;
+    color_attachment_info.resolveImageView = swapChainImageViews[imageIndex];
+    color_attachment_info.resolveImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 1.0f}}};;
+    color_attachment_info.clearValue = clearValue;
 
-    VkRenderPassBeginInfo renderPassInfo = {};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = swapChainFrameBuffers[imageIndex];
-    VkOffset2D renderAreaOffset = {0, 0};
-    renderPassInfo.renderArea.offset = renderAreaOffset;
-    renderPassInfo.renderArea.extent = swapChainExtent;
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    VkRect2D imageRect = {};
+    imageRect.offset = (VkOffset2D){0, 0};
+    imageRect.extent = swapChainExtent;
+    
+    VkRenderingInfo render_info = {};
+    render_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    render_info.renderArea = imageRect;
+    render_info.colorAttachmentCount = 1;
+    render_info.pColorAttachments = &color_attachment_info;
+    render_info.layerCount = 1;
 
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    VkStartRender(commandBuffer, &render_info);
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
     VkViewport viewport = {};
@@ -961,7 +907,7 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 
     vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
-    vkCmdEndRenderPass(commandBuffer);
+    VkEndRender(commandBuffer);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) 
     {
