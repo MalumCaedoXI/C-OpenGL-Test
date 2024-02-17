@@ -813,8 +813,7 @@ int initVulkan(GLFWwindow* window)
 }
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-    printf("Resizing?\n");
-    screenResized = 0;
+    screenResized = 1;
 }
 
 int initWindow(GLFWwindow** window)
@@ -829,12 +828,16 @@ int initWindow(GLFWwindow** window)
 
 void cleanupSwapChain()
 {
+
     for (uint32_t i = 0; i < swapChainImageCount; i++)
     {
         vkDestroyImageView(logicalDevice, swapChainImageViews[i], NULL);
     }
 
     vkDestroySwapchainKHR(logicalDevice, swapChain, NULL);
+
+    free(swapChainImages);
+    free(swapChainImageViews);
 }
 
 int cleanupWindow(GLFWwindow** window)
@@ -965,14 +968,11 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 
 int drawFrame() 
 {
-    vkWaitForFences(logicalDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(logicalDevice, 1, &inFlightFence);
 
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
     if (result == VK_ERROR_OUT_OF_DATE_KHR  || result == VK_SUBOPTIMAL_KHR || screenResized)  
     {
-        printf("Resizing2?\n");
         recreateSwapChain();
         printf("Resizing Done!\n");
         return 1;
@@ -982,6 +982,9 @@ int drawFrame()
         printf("Failed to grab swapchain!");
         return 0;
     }
+
+    vkWaitForFences(logicalDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(logicalDevice, 1, &inFlightFence);
 
     vkResetCommandBuffer(commandBuffer, 0);
     recordCommandBuffer(commandBuffer, imageIndex);
