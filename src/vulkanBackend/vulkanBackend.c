@@ -7,7 +7,6 @@
 
 
 GLFWwindow* screenWindow;
-char screenResized = 0;
 VkInstance instance;
 VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 VkDevice logicalDevice = VK_NULL_HANDLE;
@@ -812,20 +811,6 @@ int initVulkan(GLFWwindow* window)
     return 1;
 }
 
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-    screenResized = 1;
-}
-
-int initWindow(GLFWwindow** window)
-{
-    glfwInit();
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    *window = glfwCreateWindow(windowWidth, windowHeight, "Vulkan", NULL, NULL);
-    screenWindow = *window;
-    glfwSetFramebufferSizeCallback(*window, framebufferResizeCallback);
-}
-
 void cleanupSwapChain()
 {
 
@@ -872,7 +857,6 @@ int cleanupWindow(GLFWwindow** window)
 int recreateSwapChain()
 {
     printf("Recreating SwapChain!\n");
-    screenResized = 0;
     int width = 0, height = 0;
     glfwGetFramebufferSize(screenWindow, &width, &height);
     while (width == 0 || height == 0) {
@@ -971,7 +955,7 @@ int drawFrame()
 
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR  || result == VK_SUBOPTIMAL_KHR || screenResized)  
+    if (result == VK_ERROR_OUT_OF_DATE_KHR  || result == VK_SUBOPTIMAL_KHR)  
     {
         recreateSwapChain();
         printf("Resizing Done!\n");
@@ -1032,6 +1016,19 @@ void waitIdle()
     vkDeviceWaitIdle(logicalDevice);
 }
 
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+    recreateSwapChain();
+    drawFrame();
+}
 
 
     
+int initWindow(GLFWwindow** window)
+{
+    glfwInit();
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    *window = glfwCreateWindow(windowWidth, windowHeight, "Vulkan", NULL, NULL);
+    screenWindow = *window;
+    glfwSetFramebufferSizeCallback(*window, framebufferResizeCallback);
+}
