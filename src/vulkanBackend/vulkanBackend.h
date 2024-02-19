@@ -4,7 +4,11 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #include <limits.h>
+#include "vertex.h"
+#include "gpuBuffers.h"
+#include "timeWindows.h"
 #define MAX_FRAMES_IN_FLIGHT 2
+
 
 typedef struct ShaderBytecode{
     size_t fileSize;
