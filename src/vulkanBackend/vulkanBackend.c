@@ -24,6 +24,7 @@ VkShaderModule fragmentShader;
 
 VkPipelineLayout pipelineLayout;
 VkPipeline graphicsPipeline;
+VkDescriptorSetLayout descriptorSetLayout;
 VkFramebuffer* swapChainFrameBuffers;
 VkCommandPool commandPool;
 VkCommandBuffer commandBuffers[MAX_FRAMES_IN_FLIGHT];
@@ -32,7 +33,28 @@ VkSemaphore renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT];
 VkFence inFlightFences[MAX_FRAMES_IN_FLIGHT];
 PFN_vkCmdBeginRenderingKHR VkStartRender;
 PFN_vkCmdEndRenderingKHR VkEndRender;
+VkBuffer vertexBuffer;
+VkDeviceMemory vertexBufferMemory;
+VkBuffer indexBuffer;
+VkDeviceMemory indexBufferMemory;
+VkBuffer uniformBuffers[MAX_FRAMES_IN_FLIGHT];
+VkDeviceMemory uniformBuffersMemory[MAX_FRAMES_IN_FLIGHT];
+void* uniformBuffersMapped[MAX_FRAMES_IN_FLIGHT];
+
 uint32_t currentFrame = 0;
+float originalUniformTime = -1.0;
+
+
+Vertex vertices[] =  {
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+
+uint16_t indices[] = {
+    0, 1, 2, 2, 3, 0
+};
 
 QueueFamilyIndices findQueueFamilies(VkPhysicalDevice targetDevice)
 {
@@ -106,6 +128,8 @@ void freeSwapChainDetails(SwapChainDetails details)
     free(details.formats);
     free(details.presentModes);
 }
+
+
 
 int checkValidationLayerAvailabillity(const char* const* requiredValidationLayers, char validationLayerCount)
 {
@@ -543,6 +567,31 @@ VkShaderModule createShaderModule(ShaderBytecode bytecode)
     return shaderModule;
 }
 
+int createDescriptorLayout()
+{
+    printf("Starting Descriptor Layout Creation!\n");
+    VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    uboLayoutBinding.pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &uboLayoutBinding;
+
+    if (vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, NULL, &descriptorSetLayout) != VK_SUCCESS)
+    {
+        printf("Descriptor Layout Creation Failed!\n");
+        return 0;
+    }
+
+    printf("Descriptor Layout Creation OK!\n");
+    return 1;
+}
+
 int createGraphicsPipeline()
 {
    printf("Starting creation of Graphics Pipeline! Finally!\n");
@@ -575,12 +624,15 @@ int createGraphicsPipeline()
     dynamicState.dynamicStateCount = 2;
     dynamicState.pDynamicStates = dynamicStates;
 
+    VkVertexInputBindingDescription bindingDescription = vertexGetBindingDescription();
+    VkVertexInputAttributeDescription attributeDesriptions[] = {vertexGetPositionAttributeDescrition(), vertexGetColorAttributeDescrition()};
+
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.pVertexBindingDescriptions = NULL;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-    vertexInputInfo.pVertexAttributeDescriptions = NULL; 
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = 2;
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDesriptions; 
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -637,8 +689,8 @@ int createGraphicsPipeline()
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = NULL;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = NULL;
     if (vkCreatePipelineLayout(logicalDevice, &pipelineLayoutInfo, NULL, &pipelineLayout) != VK_SUCCESS)
@@ -705,6 +757,92 @@ int createCommandPool()
     return 1;
 }
 
+int createVertexBuffer()
+{
+    printf("Starting Vertex Buffer Creation. Oh god another one of these\n");
+
+    VkDeviceSize bufferSize = (sizeof(vertices[0]) * 4);
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    if (!createBuffer(logicalDevice, physicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    &stagingBuffer, &stagingBufferMemory))
+    {
+        return 0;
+    }
+
+    void* vertexMemory;
+    vkMapMemory(logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &vertexMemory); 
+    memcpy(vertexMemory, vertices, (size_t) bufferSize);
+    vkUnmapMemory(logicalDevice, stagingBufferMemory);
+
+    if (!createBuffer(logicalDevice, physicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    &vertexBuffer, &vertexBufferMemory))
+    {
+        return 0;
+    }
+
+    copyBuffer(logicalDevice, commandPool, graphicsQueue, stagingBuffer, vertexBuffer, bufferSize);
+
+    vkDestroyBuffer(logicalDevice, stagingBuffer, NULL);
+    vkFreeMemory(logicalDevice, stagingBufferMemory, NULL);
+
+    
+    printf("Vertex Buffer Creation OK!\n");
+    return 1;
+}
+
+int createIndexBuffer()
+{
+    printf("Starting Index Buffer Creation. Oh god another one of these\n");
+
+    VkDeviceSize bufferSize = (sizeof(indices[0]) * 6);
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    if (!createBuffer(logicalDevice, physicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+    &stagingBuffer, &stagingBufferMemory))
+    {
+        return 0;
+    }
+
+    void* indexMemory;
+    vkMapMemory(logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &indexMemory); 
+    memcpy(indexMemory, indices, (size_t) bufferSize);
+    vkUnmapMemory(logicalDevice, stagingBufferMemory);
+
+    if (!createBuffer(logicalDevice, physicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    &indexBuffer, &indexBufferMemory))
+    {
+        return 0;
+    }
+
+    copyBuffer(logicalDevice, commandPool, graphicsQueue, stagingBuffer, indexBuffer, bufferSize);
+
+    vkDestroyBuffer(logicalDevice, stagingBuffer, NULL);
+    vkFreeMemory(logicalDevice, stagingBufferMemory, NULL);
+    
+    printf("Index Buffer Creation OK!\n");
+    return 1;
+}
+
+int createUniformBuffers()
+{
+    printf("Starting Uniform Buffer Creation!\n");
+    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
+    {
+        createBuffer(logicalDevice, physicalDevice,bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+        &uniformBuffers[i], &uniformBuffersMemory[i]);
+
+        vkMapMemory(logicalDevice, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+    }
+
+    printf("Uniform Buffer Creation OK!\n");
+    return 1;
+}
+
 int createCommandBuffer()
 {
 
@@ -751,6 +889,7 @@ int createSyncObjects()
     return 1;
 }
 
+
 int initVulkan(GLFWwindow* window)
 {
     
@@ -794,12 +933,28 @@ int initVulkan(GLFWwindow* window)
     {
         return 0;
     }
+    if (!(createDescriptorLayout()))
+    {
+        return 0;
+    }
     if(!(createGraphicsPipeline()))
     {
         return 0;
     }
     
     if(!(createCommandPool()))
+    {
+        return 0;
+    }
+    if(!(createVertexBuffer()))
+    {
+        return 0;
+    }
+    if(!(createIndexBuffer()))
+    {
+        return 0;
+    }
+    if (!(createUniformBuffers()))
     {
         return 0;
     }
@@ -834,8 +989,19 @@ int cleanupWindow(GLFWwindow** window)
 
     cleanupSwapChain();
 
+    vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, NULL);
+
+    vkDestroyBuffer(logicalDevice, vertexBuffer, NULL);
+    vkFreeMemory(logicalDevice, vertexBufferMemory, NULL);
+
+    vkDestroyBuffer(logicalDevice, indexBuffer, NULL);
+    vkFreeMemory(logicalDevice, indexBufferMemory, NULL);
+
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
+
+        vkDestroyBuffer(logicalDevice, uniformBuffers[i], NULL);
+        vkFreeMemory(logicalDevice, uniformBuffersMemory[i], NULL);
 
         vkDestroySemaphore(logicalDevice, imageAvailableSemaphores[i], NULL);
         vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], NULL);
@@ -890,6 +1056,18 @@ int recreateSwapChain()
     return 1;
 }
 
+void updateUniformBuffer(uint32_t imageIndex)
+{
+    if (originalUniformTime == -1.0)
+    {
+        originalUniformTime = getTimeMSFloat();
+    }
+
+    float currentTime = getTimeMSFloat();
+
+    UniformBufferObject ubo = {};
+}
+
 
 int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) 
 {
@@ -929,6 +1107,10 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 
     VkStartRender(commandBuffer, &render_info);
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    VkBuffer vertexBuffers[] = {vertexBuffer};
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
     VkViewport viewport = {};
     viewport.x = 0.0f;
@@ -945,7 +1127,7 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
 
     VkEndRender(commandBuffer);
 
