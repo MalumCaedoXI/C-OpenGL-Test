@@ -25,6 +25,7 @@ VkShaderModule fragmentShader;
 VkPipelineLayout pipelineLayout;
 VkPipeline graphicsPipeline;
 VkDescriptorSetLayout descriptorSetLayout;
+VkDescriptorSet descriptorSets[MAX_FRAMES_IN_FLIGHT];
 VkFramebuffer* swapChainFrameBuffers;
 VkCommandPool commandPool;
 VkCommandBuffer commandBuffers[MAX_FRAMES_IN_FLIGHT];
@@ -40,6 +41,7 @@ VkDeviceMemory indexBufferMemory;
 VkBuffer uniformBuffers[MAX_FRAMES_IN_FLIGHT];
 VkDeviceMemory uniformBuffersMemory[MAX_FRAMES_IN_FLIGHT];
 void* uniformBuffersMapped[MAX_FRAMES_IN_FLIGHT];
+VkDescriptorPool descriptorPool;
 
 uint32_t currentFrame = 0;
 float originalUniformTime = -1.0;
@@ -656,6 +658,7 @@ int createGraphicsPipeline()
     rasterizer.depthBiasConstantFactor = 0.0f; 
     rasterizer.depthBiasClamp = 0.0f; 
     rasterizer.depthBiasSlopeFactor = 0.0f; 
+    
 
     VkPipelineMultisampleStateCreateInfo multisampling = {};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -843,6 +846,76 @@ int createUniformBuffers()
     return 1;
 }
 
+int createDescriptorPool() 
+{
+    printf("Blablabla Descriptor Pool!\n");
+    VkDescriptorPoolSize poolSize = {};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = (uint32_t)MAX_FRAMES_IN_FLIGHT;
+
+    VkDescriptorPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = (uint32_t)MAX_FRAMES_IN_FLIGHT;
+
+    if (vkCreateDescriptorPool(logicalDevice, &poolInfo, NULL, &descriptorPool) != VK_SUCCESS) 
+    {
+        printf("Bla Descriptor Pool Failed Bla\n");
+        return 0;
+    }
+
+    printf("Bla Descriptor Pool OK Bla\n");
+    return 1;
+
+}
+
+int createDescriptorSets() 
+{
+    printf("Blablabla Descriptor Sets!\n");
+
+    VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        layouts[i] = descriptorSetLayout;
+    }
+    VkDescriptorSetAllocateInfo allocInfo = {};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = (uint32_t)(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts;
+
+    if (vkAllocateDescriptorSets(logicalDevice, &allocInfo, descriptorSets) != VK_SUCCESS) 
+    {
+        printf("Bla Descriptor Sets Failed Bla\n");
+        return 0;
+    }
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
+    {
+        VkDescriptorBufferInfo bufferInfo = {};
+        bufferInfo.buffer = uniformBuffers[i];
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptorWrite = {};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSets[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrite.descriptorCount = 1;
+
+        descriptorWrite.pBufferInfo = &bufferInfo;
+        descriptorWrite.pImageInfo = NULL; 
+        descriptorWrite.pTexelBufferView = NULL; 
+
+        vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, NULL);
+    }
+    printf("Bla Descriptor Sets OK Bla\n");
+    return 1;
+}
+
 int createCommandBuffer()
 {
 
@@ -958,6 +1031,14 @@ int initVulkan(GLFWwindow* window)
     {
         return 0;
     }
+    if(!(createDescriptorPool()))
+    {
+        return 0;
+    }
+    if(!(createDescriptorSets()))
+    {
+        return 0;
+    }
     if(!(createCommandBuffer()))
     {
         return 0;
@@ -988,6 +1069,8 @@ int cleanupWindow(GLFWwindow** window)
 {
 
     cleanupSwapChain();
+
+    vkDestroyDescriptorPool(logicalDevice, descriptorPool, NULL);
 
     vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, NULL);
 
@@ -1055,18 +1138,56 @@ int recreateSwapChain()
 
     return 1;
 }
+/*
+void updateImageType(VkCommandBuffer commandBuffer, uint32_t currentFrame, VkImageLayout oldTargetLayout, VkImageLayout targetLayout, VkPipelineStageFlagBits srcBit, VkPipelineStageFlagBits destBit, VkAccessFlagBits accessMask)
+{
+    VkImageMemoryBarrier imageMemoryBarrier = {};
+    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    imageMemoryBarrier.srcAccessMask = accessMask;
+    imageMemoryBarrier.oldLayout = oldTargetLayout;
+    imageMemoryBarrier.newLayout = targetLayout;
+    imageMemoryBarrier.image = swapChainImages[currentFrame];
 
+    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+    imageMemoryBarrier.subresourceRange.baseMipLevel = 0,
+    imageMemoryBarrier.subresourceRange.levelCount = 1,
+    imageMemoryBarrier.subresourceRange.baseArrayLayer = 0,
+    imageMemoryBarrier.subresourceRange.layerCount = 1,
+    
+    vkCmdPipelineBarrier(commandBuffer, srcBit, destBit, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
+}
+*/
 void updateUniformBuffer(uint32_t imageIndex)
 {
+
     if (originalUniformTime == -1.0)
     {
         originalUniformTime = getTimeMSFloat();
     }
 
-    float currentTime = getTimeMSFloat();
+    float deltaTime = getTimeMSFloat() - originalUniformTime;
+    float rotationVector[3] = {0.0f, 1.0f, 0.0};
+    
 
-    UniformBufferObject ubo = {};
+    UniformBufferObject ubo = {{{1.0f, 1.0f, 1.0f, 1.0f},
+    {1.0f, 1.0f, 1.0f, 1.0f},
+    {1.0f, 1.0f, 1.0f, 1.0f},
+    {1.0f, 1.0f, 1.0f, 1.0f}}
+    };
+
+    float viewVectors[3][3] = {{2.0f, 2.0f, 2.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
+
+    //rotateMatrix(ubo.model, deltaTime * 90.0f, rotationVector);
+    oldRotateMatrix(ubo.model, 'y', (90.0f * ((3.14159265358979323846/180.0)) * deltaTime)); 
+    lookAt(ubo.view, viewVectors[0], viewVectors[1], viewVectors[2]);
+    perspective(ubo.proj, 45.0f, swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+    ubo.proj[1][1] *= -1.0f;
+
+    memcpy(uniformBuffersMapped[imageIndex], &ubo, sizeof(ubo));
 }
+
+
+    
 
 
 int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) 
@@ -1080,6 +1201,9 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
         printf("Start Begin Command Buffer failed!");
         return 0;
     }
+
+    //updateImageType(commandBuffer, currentFrame, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_NONE);
+
     
     VkRenderingAttachmentInfoKHR color_attachment_info = {};
     color_attachment_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -1126,10 +1250,12 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     scissor.offset = scissorOffset;
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, NULL);
     vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
 
     VkEndRender(commandBuffer);
+
+    //updateImageType(commandBuffer, currentFrame,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) 
     {
@@ -1162,6 +1288,9 @@ int drawFrame()
     
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    updateUniformBuffer(currentFrame);
+
+    
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
     VkSubmitInfo submitInfo = {};
@@ -1224,4 +1353,6 @@ int initWindow(GLFWwindow** window)
     *window = glfwCreateWindow(windowWidth, windowHeight, "Vulkan", NULL, NULL);
     screenWindow = *window;
     glfwSetFramebufferSizeCallback(*window, framebufferResizeCallback);
+    
 }
+
