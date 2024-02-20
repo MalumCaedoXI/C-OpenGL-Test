@@ -1166,22 +1166,20 @@ void updateUniformBuffer(uint32_t imageIndex)
     }
 
     float deltaTime = getTimeMSFloat() - originalUniformTime;
-    float rotationVector[3] = {0.0f, 1.0f, 0.0};
+    float rotationVector[3] = {0.0f, 1.0f, 1.0f};
     
 
-    UniformBufferObject ubo = {{{1.0f, 1.0f, 1.0f, 1.0f},
-    {1.0f, 1.0f, 1.0f, 1.0f},
-    {1.0f, 1.0f, 1.0f, 1.0f},
-    {1.0f, 1.0f, 1.0f, 1.0f}}
+    UniformBufferObject ubo = {{{1.0f, 0.0f, 0.0f, 0.0f},
+    {0.0f, 1.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 1.0f, 0.0f},
+    {0.0f, 0.0f, 0.0f, 1.0f}}
     };
 
     float viewVectors[3][3] = {{2.0f, 2.0f, 2.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
 
-    //rotateMatrix(ubo.model, deltaTime * 90.0f, rotationVector);
-    oldRotateMatrix(ubo.model, 'y', (90.0f * ((3.14159265358979323846/180.0)) * deltaTime)); 
+    rotateMatrix(ubo.model, deltaTime * 90.0f, rotationVector);
     lookAt(ubo.view, viewVectors[0], viewVectors[1], viewVectors[2]);
     perspective(ubo.proj, 45.0f, swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-    ubo.proj[1][1] *= -1.0f;
 
     memcpy(uniformBuffersMapped[imageIndex], &ubo, sizeof(ubo));
 }
@@ -1329,6 +1327,7 @@ int drawFrame()
     vkQueuePresentKHR(presentQueue, &presentInfo);
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    fflush(stdout);
 
     return 1;
 }

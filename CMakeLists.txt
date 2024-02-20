@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(C-OpenGL-Test)
-add_compile_definitions(DEBUG)
+
 
 add_compile_definitions(GLAD_GL_IMPLEMENTATION)
 
