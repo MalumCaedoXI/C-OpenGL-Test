@@ -32,6 +32,17 @@ VkVertexInputAttributeDescription vertexGetColorAttributeDescrition()
     return attributeDescription;
 }
 
+VkVertexInputAttributeDescription vertexGetTextureCoordinateAttributeDescription()
+{
+    VkVertexInputAttributeDescription attributeDescription = {};
+
+    attributeDescription.binding = 0;
+    attributeDescription.location = 2;
+    attributeDescription.format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescription.offset = offsetof(Vertex, texCoord);
+
+    return attributeDescription;
+}
 
 void normalizeVector3(float vector[3])
 {

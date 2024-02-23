@@ -8,6 +8,7 @@
 #include "gpuBuffers.h"
 #include "timeWindows.h"
 #include "TextureImages/textureImages.h"
+#include "TextureSampler/textureSampler.h"
 #define MAX_FRAMES_IN_FLIGHT 2
 
 

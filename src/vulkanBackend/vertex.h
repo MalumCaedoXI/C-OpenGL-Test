@@ -21,15 +21,22 @@ typedef struct VertexColor{
     float b;
 } VertexColor;
 
+typedef struct VertexTexCoord {
+    float x;
+    float y;
+} VertexTexCoord;
+
 typedef struct Vertex{
     VertexPosition pos;
     VertexColor col;
+    VertexTexCoord texCoord;
 } Vertex;
 
 
 VkVertexInputBindingDescription vertexGetBindingDescription();
 VkVertexInputAttributeDescription vertexGetPositionAttributeDescrition();
 VkVertexInputAttributeDescription vertexGetColorAttributeDescrition();
+VkVertexInputAttributeDescription vertexGetTextureCoordinateAttributeDescription();
 void rotateMatrix(float inMatrix[4][4], float angle, float vector[3]);
 void lookAt(float mat[4][4], float eye[3], float center[3], float up[3]);
 void perspective(float matrix[4][4], float fovDegrees, float aspect, float near, float far);

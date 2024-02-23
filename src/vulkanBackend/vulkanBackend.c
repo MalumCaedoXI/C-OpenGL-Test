@@ -42,7 +42,9 @@ VkBuffer uniformBuffers[MAX_FRAMES_IN_FLIGHT];
 VkDeviceMemory uniformBuffersMemory[MAX_FRAMES_IN_FLIGHT];
 void* uniformBuffersMapped[MAX_FRAMES_IN_FLIGHT];
 VkImage textureImage;
+VkImageView textureImageView;
 VkDeviceMemory textureImageMemory;
+VkSampler textureSampler;
 VkDescriptorPool descriptorPool;
 
 uint32_t currentFrame = 0;
@@ -50,10 +52,10 @@ float originalUniformTime = -1.0;
 
 
 Vertex vertices[] =  {
-    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
 };
 
 uint16_t indices[] = {
@@ -324,7 +326,7 @@ int physicalDeviceSuitable(VkPhysicalDevice targetDevice)
 
 
     if((properties.deviceType== VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || properties.deviceType== VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) && features.geometryShader && 
-    findQueueFamilies(targetDevice).valid && checkExtensionAvailabillity(targetDevice) && details.formatSize && details.presentSize)
+    features.samplerAnisotropy && findQueueFamilies(targetDevice).valid && checkExtensionAvailabillity(targetDevice) && details.formatSize && details.presentSize)
     {
         printf("Found suitable physical device: %s!\n", properties.deviceName);
         printf("Device has %u surface formats and %u presentation formats!\n", details.formatSize, details.presentSize);
@@ -386,10 +388,11 @@ int createLogicalDevice()
         queueInfos[i] = queueCreateInfo;
     }
     VkPhysicalDeviceFeatures deviceFeatures ={};
+    deviceFeatures.samplerAnisotropy = VK_TRUE;
 
-    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderinFeature = {};
-    dynamicRenderinFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
-    dynamicRenderinFeature.dynamicRendering  = VK_TRUE;
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeature = {};
+    dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+    dynamicRenderingFeature.dynamicRendering  = VK_TRUE;
 
     VkDeviceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -405,7 +408,7 @@ int createLogicalDevice()
     VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME};
     createInfo.ppEnabledExtensionNames = requiredExtentions;
 
-    createInfo.pNext = &dynamicRenderinFeature;
+    createInfo.pNext = &dynamicRenderingFeature;
 
     char validationLayerCount = 1;
     char validationEnabled = 0;
@@ -581,10 +584,19 @@ int createDescriptorLayout()
     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     uboLayoutBinding.pImmutableSamplers = NULL;
 
+    VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
+    samplerLayoutBinding.binding = 1;
+    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerLayoutBinding.pImmutableSamplers = NULL;
+    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding bindings[2] = {uboLayoutBinding, samplerLayoutBinding};
+
     VkDescriptorSetLayoutCreateInfo layoutInfo = {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &uboLayoutBinding;
+    layoutInfo.bindingCount = 2;
+    layoutInfo.pBindings = bindings;
 
     if (vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, NULL, &descriptorSetLayout) != VK_SUCCESS)
     {
@@ -629,13 +641,13 @@ int createGraphicsPipeline()
     dynamicState.pDynamicStates = dynamicStates;
 
     VkVertexInputBindingDescription bindingDescription = vertexGetBindingDescription();
-    VkVertexInputAttributeDescription attributeDesriptions[] = {vertexGetPositionAttributeDescrition(), vertexGetColorAttributeDescrition()};
+    VkVertexInputAttributeDescription attributeDesriptions[] = {vertexGetPositionAttributeDescrition(), vertexGetColorAttributeDescrition(), vertexGetTextureCoordinateAttributeDescription()};
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputInfo.vertexBindingDescriptionCount = 1;
     vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-    vertexInputInfo.vertexAttributeDescriptionCount = 2;
+    vertexInputInfo.vertexAttributeDescriptionCount = 3;
     vertexInputInfo.pVertexAttributeDescriptions = attributeDesriptions; 
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
@@ -851,14 +863,16 @@ int createUniformBuffers()
 int createDescriptorPool() 
 {
     printf("Blablabla Descriptor Pool!\n");
-    VkDescriptorPoolSize poolSize = {};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = (uint32_t)MAX_FRAMES_IN_FLIGHT;
+    VkDescriptorPoolSize poolSize[2] = {{}, {}};
+    poolSize[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize[0].descriptorCount = (uint32_t)MAX_FRAMES_IN_FLIGHT;
+    poolSize[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSize[1].descriptorCount = (uint32_t)MAX_FRAMES_IN_FLIGHT;
 
     VkDescriptorPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.poolSizeCount = 2;
+    poolInfo.pPoolSizes = poolSize;
     poolInfo.maxSets = (uint32_t)MAX_FRAMES_IN_FLIGHT;
 
     if (vkCreateDescriptorPool(logicalDevice, &poolInfo, NULL, &descriptorPool) != VK_SUCCESS) 
@@ -900,19 +914,33 @@ int createDescriptorSets()
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(UniformBufferObject);
 
-        VkWriteDescriptorSet descriptorWrite = {};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = descriptorSets[i];
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrite.descriptorCount = 1;
+        VkDescriptorImageInfo imageInfo = {};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = textureImageView;
+        imageInfo.sampler = textureSampler;
 
-        descriptorWrite.pBufferInfo = &bufferInfo;
-        descriptorWrite.pImageInfo = NULL; 
-        descriptorWrite.pTexelBufferView = NULL; 
+        VkWriteDescriptorSet descriptorWrites[2] = {{}, {}};
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = descriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &bufferInfo;
+        descriptorWrites[0].pImageInfo = NULL; 
+        descriptorWrites[0].pTexelBufferView = NULL; 
 
-        vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, NULL);
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = descriptorSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pBufferInfo = NULL;
+        descriptorWrites[1].pImageInfo = &imageInfo; 
+        descriptorWrites[1].pTexelBufferView = NULL; 
+
+        vkUpdateDescriptorSets(logicalDevice, 2, descriptorWrites, 0, NULL);
     }
     printf("Bla Descriptor Sets OK Bla\n");
     return 1;
@@ -1031,7 +1059,12 @@ int initVulkan(GLFWwindow* window)
     ti.textureImageMemory = &textureImageMemory;
 
     createTextureImageFromFile(ti, "resources/textures/texture.jpg");
+    textureImageView = createImageView(logicalDevice, textureImage, VK_FORMAT_R8G8B8A8_SRGB);
 
+    if(!(createTextureSampler(logicalDevice, physicalDevice, &textureSampler)))
+    {
+        return 0;
+    }
     if(!(createVertexBuffer()))
     {
         return 0;
@@ -1086,6 +1119,9 @@ int cleanupWindow(GLFWwindow** window)
     vkDestroyDescriptorPool(logicalDevice, descriptorPool, NULL);
 
     vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, NULL);
+    vkDestroySampler(logicalDevice, textureSampler, NULL);
+
+    vkDestroyImageView(logicalDevice, textureImageView, NULL);
 
     vkDestroyImage(logicalDevice, textureImage, NULL);
     vkFreeMemory(logicalDevice, textureImageMemory, NULL);
