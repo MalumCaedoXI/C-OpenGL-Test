@@ -41,6 +41,8 @@ VkDeviceMemory indexBufferMemory;
 VkBuffer uniformBuffers[MAX_FRAMES_IN_FLIGHT];
 VkDeviceMemory uniformBuffersMemory[MAX_FRAMES_IN_FLIGHT];
 void* uniformBuffersMapped[MAX_FRAMES_IN_FLIGHT];
+VkImage textureImage;
+VkDeviceMemory textureImageMemory;
 VkDescriptorPool descriptorPool;
 
 uint32_t currentFrame = 0;
@@ -1019,6 +1021,17 @@ int initVulkan(GLFWwindow* window)
     {
         return 0;
     }
+
+    VkTextureImageObject ti = {};
+    ti.commandPool = commandPool;
+    ti.commandQueue = graphicsQueue;
+    ti.logicalDevice = logicalDevice;
+    ti.physicalDevice = physicalDevice;
+    ti.textureImage = &textureImage;
+    ti.textureImageMemory = &textureImageMemory;
+
+    createTextureImageFromFile(ti, "resources/textures/texture.jpg");
+
     if(!(createVertexBuffer()))
     {
         return 0;
@@ -1073,6 +1086,9 @@ int cleanupWindow(GLFWwindow** window)
     vkDestroyDescriptorPool(logicalDevice, descriptorPool, NULL);
 
     vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, NULL);
+
+    vkDestroyImage(logicalDevice, textureImage, NULL);
+    vkFreeMemory(logicalDevice, textureImageMemory, NULL);
 
     vkDestroyBuffer(logicalDevice, vertexBuffer, NULL);
     vkFreeMemory(logicalDevice, vertexBufferMemory, NULL);
@@ -1251,7 +1267,16 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, NULL);
     vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
 
+    VkTextureImageObject ti = {};
+    ti.commandPool = commandPool;
+    ti.commandQueue = graphicsQueue;
+    ti.logicalDevice = logicalDevice;
+    ti.physicalDevice = physicalDevice;
+    
+
     VkEndRender(commandBuffer);
+
+    transitionImageLayout(ti, swapChainImages[imageIndex], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, &commandBuffer);
 
     //updateImageType(commandBuffer, currentFrame,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
