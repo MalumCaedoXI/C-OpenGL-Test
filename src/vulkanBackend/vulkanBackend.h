@@ -31,8 +31,8 @@ typedef struct SwapChainDetails {
     VkPresentModeKHR* presentModes;
 }SwapChainDetails;
 
-int initVulkan();
-int initWindow(GLFWwindow** window);
-int cleanupWindow(GLFWwindow** window);
+void setupWindow(GLFWwindow* window);
+int initVulkan(GLFWwindow* window);
+int cleanupWindow(GLFWwindow* window);
 int drawFrame();
 void waitIdle();

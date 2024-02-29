@@ -3,9 +3,15 @@
 #include "vulkanBackend/vulkanBackend.h"
 #include "vulkanBackend/timeWindows.h"
 
+GLFWwindow* window;
 
+int initWindow()
+{
+    glfwInit();
 
-
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    window = glfwCreateWindow(800, 600, "Vulkan", NULL, NULL);
+}
 
 int main() {
     printf("Current Time is: %f\n", getTimeMSFloat());
@@ -25,12 +31,13 @@ int main() {
     }
 
     
-    GLFWwindow** window; 
-    initWindow(window);
-    if(initVulkan(*window))
+    
+    initWindow();
+    setupWindow(window);
+    if(initVulkan(window))
     {
 
-        while (!glfwWindowShouldClose(*window)) {
+        while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             drawFrame();
         }

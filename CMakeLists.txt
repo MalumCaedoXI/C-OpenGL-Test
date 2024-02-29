@@ -4,6 +4,7 @@ add_compile_definitions(DEBUG)
 
 
 add_compile_definitions(GLAD_GL_IMPLEMENTATION)
+add_compile_options(-Og)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/external/glfw)
 

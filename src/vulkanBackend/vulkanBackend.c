@@ -1136,13 +1136,17 @@ void cleanupSwapChain()
         vkDestroyImageView(logicalDevice, swapChainImageViews[i], NULL);
     }
 
+    vkDestroyImageView(logicalDevice, depthImageView, NULL);
+    vkDestroyImage(logicalDevice, depthImage, NULL);
+    vkFreeMemory(logicalDevice, depthImageMemory, NULL);
+
     vkDestroySwapchainKHR(logicalDevice, swapChain, NULL);
 
     free(swapChainImages);
     free(swapChainImageViews);
 }
 
-int cleanupWindow(GLFWwindow** window)
+int cleanupWindow(GLFWwindow* window)
 {
 
     cleanupSwapChain();
@@ -1186,7 +1190,7 @@ int cleanupWindow(GLFWwindow** window)
     vkDestroySwapchainKHR(logicalDevice, swapChain, NULL);
     vkDestroyDevice(logicalDevice, NULL);
     vkDestroyInstance(instance, NULL);
-    glfwDestroyWindow(*window);
+    glfwDestroyWindow(window);
 
     glfwTerminate();
 }
@@ -1206,6 +1210,15 @@ int recreateSwapChain()
     vkDeviceWaitIdle(logicalDevice);
 
     cleanupSwapChain();
+    VkTextureImageObject ti = {};
+    ti.commandPool = commandPool;
+    ti.commandQueue = graphicsQueue;
+    ti.logicalDevice = logicalDevice;
+    ti.physicalDevice = physicalDevice;
+    ti.textureImage = &depthImage;
+    ti.textureImageMemory = &depthImageMemory;
+    VkExtent2D extent = getSwapchainSize();
+    depthImageView = createDepthResources(ti, extent.width, extent.height);
 
     if (!(createSwapChain()))
     {
@@ -1444,16 +1457,14 @@ static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
     drawFrame();
 }
 
-
-    
-int initWindow(GLFWwindow** window)
+void setupWindow(GLFWwindow* window)
 {
-    glfwInit();
+    screenWindow = window;
 
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    *window = glfwCreateWindow(windowWidth, windowHeight, "Vulkan", NULL, NULL);
-    screenWindow = *window;
-    glfwSetFramebufferSizeCallback(*window, framebufferResizeCallback);
-    
+    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 }
+
+
+    
+
 
