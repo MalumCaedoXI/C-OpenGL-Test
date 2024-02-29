@@ -6,4 +6,5 @@ target_sources(C-OpenGL-Test PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/TextureImages/textureImages.c
 	${CMAKE_CURRENT_SOURCE_DIR}/CommandBuffers/commandBuffers.c
 	${CMAKE_CURRENT_SOURCE_DIR}/TextureSampler/textureSampler.c
+	${CMAKE_CURRENT_SOURCE_DIR}/DepthStencil/depthStencil.c
 )

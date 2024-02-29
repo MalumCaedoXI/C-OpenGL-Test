@@ -81,6 +81,16 @@ int transitionImageLayout(VkTextureImageObject ti, VkImage image, VkFormat forma
         sourceStage =  VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
     } 
+    else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) 
+    {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    }
     else 
     {
         printf("Image format transformation layout is unsupported!\n");
@@ -109,19 +119,9 @@ int transitionImageLayout(VkTextureImageObject ti, VkImage image, VkFormat forma
     return 1;
 }
 
-int createTextureImage(VkTextureImageObject ti, unsigned char* textureBuffer, uint32_t textureWidth, uint32_t textureHeight, int textureChannels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usageFlags, VkMemoryPropertyFlags properties)
+int createTextureImage(VkTextureImageObject ti, uint32_t textureWidth, uint32_t textureHeight, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usageFlags, VkMemoryPropertyFlags properties)
 {
-    VkDeviceSize imageSize = textureWidth * textureHeight * 4;
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(ti.logicalDevice, ti.physicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
-    &stagingBuffer, &stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(ti.logicalDevice, stagingBufferMemory, 0, imageSize, 0, &data);
-    memcpy(data, textureBuffer, (size_t)imageSize);
-    vkUnmapMemory(ti.logicalDevice, stagingBufferMemory);
+    
 
     VkImageCreateInfo imageInfo = {};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -151,7 +151,7 @@ int createTextureImage(VkTextureImageObject ti, unsigned char* textureBuffer, ui
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(ti.physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    allocInfo.memoryTypeIndex = findMemoryType(ti.physicalDevice, memRequirements.memoryTypeBits, properties);
 
     if (vkAllocateMemory(ti.logicalDevice, &allocInfo, NULL, ti.textureImageMemory) != VK_SUCCESS) 
     {
@@ -159,6 +159,25 @@ int createTextureImage(VkTextureImageObject ti, unsigned char* textureBuffer, ui
     }
 
     vkBindImageMemory(ti.logicalDevice, *(ti.textureImage), *(ti.textureImageMemory), 0);
+
+    
+}
+
+int createTextureImageFromBuffer(VkTextureImageObject ti, unsigned char* textureBuffer, uint32_t textureWidth, uint32_t textureHeight, int textureChannels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usageFlags, VkMemoryPropertyFlags properties)
+{
+    VkDeviceSize imageSize = textureWidth * textureHeight * 4;
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(ti.logicalDevice, ti.physicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+    &stagingBuffer, &stagingBufferMemory);
+
+    void* data;
+    vkMapMemory(ti.logicalDevice, stagingBufferMemory, 0, imageSize, 0, &data);
+    memcpy(data, textureBuffer, (size_t)imageSize);
+    vkUnmapMemory(ti.logicalDevice, stagingBufferMemory);
+
+    createTextureImage(ti, textureWidth, textureHeight, format, tiling, usageFlags, properties);
 
     transitionImageLayout(ti ,*(ti.textureImage), VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, NULL);
     copyBufferToImage(ti, stagingBuffer, *(ti.textureImage), textureWidth, textureHeight);
@@ -168,6 +187,7 @@ int createTextureImage(VkTextureImageObject ti, unsigned char* textureBuffer, ui
     vkDestroyBuffer(ti.logicalDevice, stagingBuffer, NULL);
     vkFreeMemory(ti.logicalDevice, stagingBufferMemory, NULL);
     return 1;
+
 }
 
 int createTextureImageFromFile(VkTextureImageObject ti, char* filePath)
@@ -180,21 +200,21 @@ int createTextureImageFromFile(VkTextureImageObject ti, char* filePath)
         printf("Finding texture failed!\n");
         return 0;
     }
-    int result = createTextureImage(ti, pixels, textureWidth, textureHeight, textureChannels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, 
+    int result = createTextureImageFromBuffer(ti, pixels, textureWidth, textureHeight, textureChannels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, 
     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     stbi_image_free(pixels);
 
     return result;
 }
 
-VkImageView createImageView(VkDevice logicalDevice, VkImage image, VkFormat format) 
+VkImageView createImageView(VkDevice logicalDevice, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) 
 {
     VkImageViewCreateInfo viewInfo = {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = format;
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.aspectMask = aspectFlags;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.baseArrayLayer = 0;

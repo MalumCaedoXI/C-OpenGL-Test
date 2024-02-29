@@ -15,7 +15,7 @@ VkVertexInputAttributeDescription vertexGetPositionAttributeDescrition()
     VkVertexInputAttributeDescription attributeDescription = {};
     attributeDescription.binding = 0;
     attributeDescription.location = 0;
-    attributeDescription.format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescription.offset = offsetof(Vertex, pos);
 
     return attributeDescription;

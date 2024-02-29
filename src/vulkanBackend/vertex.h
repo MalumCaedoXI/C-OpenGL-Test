@@ -13,6 +13,7 @@ typedef struct UniformBufferObject{
 typedef struct VertexPosition{
     float x;
     float y;
+    float z;
 } VertexPosition;
 
 typedef struct VertexColor{

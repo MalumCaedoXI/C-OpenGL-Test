@@ -45,6 +45,9 @@ VkImage textureImage;
 VkImageView textureImageView;
 VkDeviceMemory textureImageMemory;
 VkSampler textureSampler;
+VkImage depthImage;
+VkDeviceMemory depthImageMemory;
+VkImageView depthImageView;
 VkDescriptorPool descriptorPool;
 
 uint32_t currentFrame = 0;
@@ -52,14 +55,20 @@ float originalUniformTime = -1.0;
 
 
 Vertex vertices[] =  {
-    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
+    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
+
+    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
 };
 
 uint16_t indices[] = {
-    0, 1, 2, 2, 3, 0
+    0, 1, 2, 2, 3, 0,
+    4, 5, 6, 6, 7, 4
 };
 
 QueueFamilyIndices findQueueFamilies(VkPhysicalDevice targetDevice)
@@ -437,6 +446,14 @@ int createLogicalDevice()
     return 1;
 }
 
+VkExtent2D getSwapchainSize()
+{
+    SwapChainDetails details = findSwapChainDetails(physicalDevice);
+    VkExtent2D extent = chooseSwapExtent(details.capabilities, screenWindow);
+    freeSwapChainDetails(details);
+    return extent;
+}
+
 
 int createSwapChain()
 {
@@ -720,8 +737,16 @@ int createGraphicsPipeline()
     pipeline_create.pNext                   = VK_NULL_HANDLE;
     pipeline_create.colorAttachmentCount    = 1;
     pipeline_create.pColorAttachmentFormats = &swapChainImageFormat;
-    pipeline_create.depthAttachmentFormat   = VK_FORMAT_UNDEFINED;//TODO: I got no idea if this is right. Docs are sparse here.
+    pipeline_create.depthAttachmentFormat   = findDepthFormat(physicalDevice);//TODO: I got no idea if this is right. Docs are sparse here.
     pipeline_create.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+
+    VkPipelineDepthStencilStateCreateInfo depthStencil = {};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
     
 
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
@@ -734,7 +759,7 @@ int createGraphicsPipeline()
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pDepthStencilState = NULL;
+    pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = pipelineLayout;
@@ -778,7 +803,7 @@ int createVertexBuffer()
 {
     printf("Starting Vertex Buffer Creation. Oh god another one of these\n");
 
-    VkDeviceSize bufferSize = (sizeof(vertices[0]) * 4);
+    VkDeviceSize bufferSize = (sizeof(vertices[0]) * 8);
 
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -813,7 +838,7 @@ int createIndexBuffer()
 {
     printf("Starting Index Buffer Creation. Oh god another one of these\n");
 
-    VkDeviceSize bufferSize = (sizeof(indices[0]) * 6);
+    VkDeviceSize bufferSize = (sizeof(indices[0]) * 12);
 
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -1050,6 +1075,7 @@ int initVulkan(GLFWwindow* window)
         return 0;
     }
 
+
     VkTextureImageObject ti = {};
     ti.commandPool = commandPool;
     ti.commandQueue = graphicsQueue;
@@ -1059,7 +1085,12 @@ int initVulkan(GLFWwindow* window)
     ti.textureImageMemory = &textureImageMemory;
 
     createTextureImageFromFile(ti, "resources/textures/texture.jpg");
-    textureImageView = createImageView(logicalDevice, textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+    textureImageView = createImageView(logicalDevice, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    ti.textureImage = &depthImage;
+    ti.textureImageMemory = &depthImageMemory;
+    VkExtent2D extent = getSwapchainSize();
+    depthImageView = createDepthResources(ti, extent.width, extent.height);
 
     if(!(createTextureSampler(logicalDevice, physicalDevice, &textureSampler)))
     {
@@ -1251,9 +1282,6 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
         printf("Start Begin Command Buffer failed!");
         return 0;
     }
-
-    //updateImageType(commandBuffer, currentFrame, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_NONE);
-
     
     VkRenderingAttachmentInfoKHR color_attachment_info = {};
     color_attachment_info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -1264,8 +1292,22 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     color_attachment_info.resolveMode = VK_RESOLVE_MODE_NONE;
     color_attachment_info.resolveImageView = swapChainImageViews[imageIndex];
     color_attachment_info.resolveImageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 1.0f}}};;
+    VkClearValue clearValue = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
     color_attachment_info.clearValue = clearValue;
+
+    VkRenderingAttachmentInfoKHR depthAttachmentInfo = {};
+    depthAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    depthAttachmentInfo.resolveImageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depthAttachmentInfo.imageView = depthImageView;
+    depthAttachmentInfo.imageView = depthImageView;
+    depthAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachmentInfo.resolveMode = VK_RESOLVE_MODE_NONE;
+    VkClearValue depthClearValue = {};
+    depthClearValue.depthStencil.depth = 1.0f;
+    depthClearValue.depthStencil.stencil = 0;
+    depthAttachmentInfo.clearValue = depthClearValue;
 
     VkRect2D imageRect = {};
     imageRect.offset = (VkOffset2D){0, 0};
@@ -1276,6 +1318,7 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     render_info.renderArea = imageRect;
     render_info.colorAttachmentCount = 1;
     render_info.pColorAttachments = &color_attachment_info;
+    render_info.pDepthAttachment = &depthAttachmentInfo;
     render_info.layerCount = 1;
 
 
@@ -1301,7 +1344,7 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, NULL);
-    vkCmdDrawIndexed(commandBuffer, 6, 1, 0, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, 12, 1, 0, 0, 0);
 
     VkTextureImageObject ti = {};
     ti.commandPool = commandPool;
@@ -1311,10 +1354,8 @@ int recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     
 
     VkEndRender(commandBuffer);
-
     transitionImageLayout(ti, swapChainImages[imageIndex], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, &commandBuffer);
-
-    //updateImageType(commandBuffer, currentFrame,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+    
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) 
     {
